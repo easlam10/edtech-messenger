@@ -57,6 +57,14 @@ class WhatsAppService {
         console.log("Session saved to MongoDB!");
       });
 
+      // Add handler for disconnection events to improve reliability
+      this.client.on("disconnected", () => {
+        console.log("WhatsApp client disconnected. Attempting to reconnect...");
+        this.isReady = false;
+        // Don't try to reinitialize immediately in this case
+        // Just mark as not ready so next operation will wait
+      });
+
       // Initialize the client
       console.log("Initializing WhatsApp client with saved session...");
       await this.client.initialize();
@@ -82,7 +90,20 @@ class WhatsAppService {
       // Send the message
       console.log(`Sending message to ${to}...`);
       const response = await this.client.sendMessage(chatId, message);
-      console.log(`Message sent to ${to}: ${response.id._serialized}`);
+
+      // Handle different response formats gracefully
+      let messageId = "unknown";
+      if (response && response.id && response.id._serialized) {
+        messageId = response.id._serialized;
+      } else if (response && typeof response === "object") {
+        messageId = JSON.stringify(response);
+      }
+
+      console.log(`Message sent to ${to}: ${messageId}`);
+
+      // Add a small delay to ensure message is actually sent before returning
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+
       return response;
     } catch (error) {
       console.error(`Failed to send message to ${to}:`, error);
@@ -123,6 +144,8 @@ class WhatsAppService {
   // Close the client connection
   async close() {
     if (this.client) {
+      // Add a small delay before destroying to ensure messages have time to send
+      await new Promise((resolve) => setTimeout(resolve, 2000));
       await this.client.destroy();
       console.log("WhatsApp client connection closed");
     }
